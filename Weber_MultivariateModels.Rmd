@@ -1,0 +1,101 @@
+---
+title: "Weber_MultivariateModels"
+author: "Nick Weber"
+date: "2/6/2018"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r}
+library(vegan)
+data(dune)
+data(dune.env)
+
+#1. Conduct an indirect ordination...
+
+dune_mds = metaMDS(dune, trymax = 5)
+
+par("mar")
+par(mar=c(1,1,1,1))
+
+plot(dune_mds, type='n')
+text(dune_mds, 'sp', cex=.5)
+# generate vector of colors 
+color_vect = rev(terrain.colors(6))[-1]
+points(dune_mds, 'sites', pch=19, 
+        col=color_vect[dune.env$Moisture])
+legend('topright', paste("Moisture =", 1:5, sep=''), 
+        col=color_vect, pch=19)
+
+#On this plot, each point corresponds to 1 of the 20 sites, and the black words represent each of the 30 species. This plot is emphasizing the role of 'moisture', by color-coding each of the 20 sites according to the moisture level present at that site (aka we are post-hoc overlaying environmental information using 'moisture'). The axes are essentially hypothetical gradients. As you move to the right across the x-axis, it is clear that you are getting higher moisture levels. From this graph, we can start to infer that the species names present on the right side of the graph may be more likely found at higher moisture sites. The goal of this plot is to start to examine the correlations present in the explanatory environmental matrix.  
+```
+
+```{r}
+#2. Carry out a direct ordination using CCA...
+
+cca_dune <- cca(dune ~ ., data=dune.env)
+RsquareAdj(cca_dune, 100) #0.26
+
+plot(cca_dune, type='n', scaling=1)
+orditorp(cca_dune, display='sp', cex=0.5, scaling=1, col='blue')
+text(cca_dune, display='bp', col='red')
+
+#In this plot, 'Moisture.L' is weighing heavily on CCA1, indicating that this variable explains a larger proption of the variance associated with the CCA1 axis. The location of the species relative to each environmental variable indicates how strongly a species is associated with a given variable. The majority of the variation associated with axis 2 is explained by the variables 'Management' and 'Manure'. 
+
+cca_dune_1 <- cca(dune ~ Moisture, data=dune.env)
+RsquareAdj(cca_dune_1, 100) #0.17
+
+plot(cca_dune_1, type='n', scaling=1)
+orditorp(cca_dune_1, display='sp', cex=0.5, scaling=1, col='blue')
+text(cca_dune_1, display='bp', col='red')
+
+cca_dune_2 <- cca(dune ~ Moisture + Manure + Management, data=dune.env)
+RsquareAdj(cca_dune_2, 100) #0.21
+
+plot(cca_dune_2, type='n', scaling=1)
+orditorp(cca_dune_2, display='sp', cex=0.5, scaling=1, col='blue')
+text(cca_dune_2, display='bp', col='red')
+
+cca_dune_3 <- cca(dune ~ Moisture + Management, data=dune.env)
+RsquareAdj(cca_dune_3, 100) #0.24
+
+plot(cca_dune_3, type='n', scaling=1)
+orditorp(cca_dune_3, display='sp', cex=0.5, scaling=1, col='blue')
+text(cca_dune_3, display='bp', col='red')
+```
+
+```{r}
+#2. cont'd...
+
+#Running permutation test on entire model (cca_dune).
+anova(cca_dune, permutations = 100)
+anova(cca_dune, by='margin', permutations = 100)
+
+#Running permutation test on best-fitting model (cca_dune_3).
+
+anova(cca_dune_3, permutations = 100)
+anova(cca_dune_3, by='margin', permutations = 100)
+```
+
+```{r}
+#3. The two analyses do agree with eachother. The first analysis in Question 1 suggested that 'moisture' was explaining a good portion of the variation in the first axis. The second analysis in Question 2 also suggested that 'moisture' was explaining the majority of the variation in axis 1, and also suggested that 'Management' explained the marjority of the variation in axis 2. Finally, the anova() in analysis 2 suggested that 'Moisture' was having a significant effect on dune species distribution.
+
+#I found the second analysis to be more useful. I was able to arrive at the variables 'Moisture' and 'Management' explaining the majority of the variation, and could then confirm that result by plotting those variables on an NMDS plot. 
+
+#The indirect ordination below shows that 'Management' is explaining a good portion of the variation in the second axis.
+
+dune_mds = metaMDS(dune, trymax = 5)
+
+par("mar")
+par(mar=c(1,1,1,1))
+
+plot(dune_mds, type='n')
+text(dune_mds, 'sp', cex=.5)
+# generate vector of colors 
+color_vect = rev(terrain.colors(6))[-1]
+points(dune_mds, 'sites', pch=19, 
+        col=color_vect[dune.env$Management])
+legend('topright', paste("Management =", 1:5, sep=''), 
+        col=color_vect, pch=19)
+```
