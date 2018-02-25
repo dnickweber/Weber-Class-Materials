@@ -1,0 +1,182 @@
+---
+title: "Spatial Modeling"
+author: "Nick Weber"
+date: "2/15/2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r}
+library(vegan)
+library(nlme)
+data(BCI)
+
+## UTM Coordinates (in metres)
+BCI_xy = data.frame(x = rep(seq(625754, 626654, by=100), each=5), 
+                    y = rep(seq(1011569,  1011969, by=100), len=50))
+```
+
+```{r}
+#Question 1. Examine if there is evidence of spatial dependence...
+
+sr = apply(BCI, 1, function(x) sum(x > 0))
+hist(sr)
+
+col_brks = hist(sr, plot=F)$breaks
+col_indices = as.numeric(cut(sr, col_brks))
+cols = rev(terrain.colors(length(col_brks)))
+plot(BCI_xy, cex=2, pch=19, col=cols[col_indices])
+```
+
+```{r}
+abu <- colSums(BCI)
+
+quantile(abu, c(0.25, 0.75))
+
+sp_ids_rare <- BCI[ , abu < 7]
+
+sp_ids_common <- BCI[ , abu > 82]
+
+#Examining if there is evidence of spatial dependence in rare species...
+sr_dist_rare <- dist(sp_ids_rare)
+xy_dist <- dist(BCI_xy)
+
+max_dist <- max(xy_dist) / 2
+
+# plot result
+plot(xy_dist, sr_dist_rare)
+abline(lm(sr_dist_rare ~ xy_dist), lwd=3, col='red')
+lines(lowess(xy_dist, sr_dist_rare), lwd=3, col='pink')
+abline(v = max_dist, col='red', lwd=3, lty=2)
+
+obs_cor <- cor(xy_dist, sr_dist_rare)
+obs_cor
+
+nperm = 1000
+null_cor = obs_cor
+for (i in 2:nperm) {
+    tmp_xy = BCI_xy[sample(nrow(BCI_xy)), ]
+    null_cor[i] = cor(dist(tmp_xy), sr_dist_rare)
+}
+
+sum(null_cor >= obs_cor) / nperm 
+
+sr_mantel_rare <- mantel(xy_dist, sr_dist_rare)
+sr_mantel_rare
+
+boxplot(list(null_cor, sr_mantel_rare$perm), horizontal = T, boxwex = 0.5,
+        names = c('mine', 'theirs'), xlab='Correlation')
+abline(v=obs_cor, col='red')
+
+#The observed value is not larger than the null realizations, indicating that there is not a significant difference between the observed spatial pattern and one due to random chance.  
+```
+
+```{r}
+#Examining if there is evidence of spatial dependence in common species...
+sr_dist_common <- dist(sp_ids_common)
+xy_dist <- dist(BCI_xy)
+
+max_dist <- max(xy_dist) / 2
+
+# plot result
+plot(xy_dist, sr_dist_common)
+abline(lm(sr_dist_common ~ xy_dist), lwd=3, col='red')
+lines(lowess(xy_dist, sr_dist_common), lwd=3, col='pink')
+abline(v = max_dist, col='red', lwd=3, lty=2)
+
+obs_cor <- cor(xy_dist, sr_dist_common)
+obs_cor
+
+nperm = 1000
+null_cor = obs_cor
+for (i in 2:nperm) {
+    tmp_xy = BCI_xy[sample(nrow(BCI_xy)), ]
+    null_cor[i] = cor(dist(tmp_xy), sr_dist_common)
+}
+
+sum(null_cor >= obs_cor) / nperm 
+
+sr_mantel_common <- mantel(xy_dist, sr_dist_common)
+sr_mantel_common
+
+boxplot(list(null_cor, sr_mantel_common$perm), horizontal = T, boxwex = 0.5,
+        names = c('mine', 'theirs'), xlab='Correlation')
+abline(v=obs_cor, col='red')
+
+#The observed value is larger than the null realizations, indicating that there is a significant difference between the observed spatial pattern and one due to random chance.
+```
+
+```{r}
+#Question 2. Build two generalized linear models...
+
+sp_ids <- c("Cordia.lasiocalyx", "Hirtella.triandra",
+           "Picramnia.latifolia", "Quassia.amara",
+           "Tabernaemontana.arborea", "Trattinnickia.aspera", 
+           "Xylopia.macrantha")
+
+sr_dat <- data.frame(sr, BCI, BCI_xy)
+
+#Generalized linear model with all predictor variables...
+
+abu_allpredictors <- gls(Drypetes.standleyi ~ Cordia.lasiocalyx + Hirtella.triandra + Picramnia.latifolia + Quassia.amara + Tabernaemontana.arborea + Trattinnickia.aspera + Xylopia.macrantha, data=sr_dat)
+summary(abu_allpredictors)
+
+plot(Variogram(abu_allpredictors, form= ~ x + y)) 
+res <- residuals(abu_allpredictors)
+plot(dist(sr_dat[, c('x', 'y')]), dist(res))
+lines(lowess(dist(sr_dat[, c('x', 'y')]), dist(res)), col='red', lwd=2)
+abline(v = max_dist, col='red', lwd=3, lty=2)
+
+abu_all_exp <- update(abu_allpredictors, corr=corExp(form=~x + y)) 
+plot(Variogram(abu_all_exp, maxDist = max_dist))
+
+plot(Variogram(abu_all_exp, resType='normalized', maxDist = max_dist))
+
+abu_all_rat_nug <- update(abu_allpredictors, corr=corRatio(form=~x + y, nugget=T))
+
+plot(Variogram(abu_all_rat_nug, maxDist = max_dist))
+plot(Variogram(abu_all_rat_nug, resType='n', maxDist = max_dist))
+
+anova(abu_allpredictors, abu_all_exp, abu_all_rat_nug, test=F)
+
+summary(abu_allpredictors)
+summary(abu_all_rat_nug)
+
+#Generalized linear model with single predictor variable...
+
+abu_singlepredictor <- gls(Drypetes.standleyi ~ Xylopia.macrantha, data=sr_dat)
+summary(abu_singlepredictor)
+
+plot(Variogram(abu_singlepredictor, form= ~ x + y)) 
+res <- residuals(abu_singlepredictor)
+plot(dist(sr_dat[, c('x', 'y')]), dist(res))
+lines(lowess(dist(sr_dat[, c('x', 'y')]), dist(res)), col='red', lwd=2)
+abline(v = max_dist, col='red', lwd=3, lty=2)
+
+abu_single_exp <- update(abu_singlepredictor, corr=corExp(form=~x + y)) 
+plot(Variogram(abu_single_exp, maxDist = max_dist))
+
+plot(Variogram(abu_single_exp, resType='normalized', maxDist = max_dist))
+
+abu_single_rat_nug <- update(abu_singlepredictor, corr=corRatio(form=~x + y, nugget=T))
+
+plot(Variogram(abu_single_rat_nug, maxDist = max_dist))
+plot(Variogram(abu_single_rat_nug, resType='n', maxDist = max_dist))
+
+anova(abu_singlepredictor, abu_single_exp, abu_single_rat_nug, test=F)
+
+summary(abu_singlepredictor)
+summary(abu_single_rat_nug)
+```
+
+```{r}
+##Did including the spatial error term have a large impact on the coefficients of the model?
+#Including the spatial error term improved the model fit, and had an impact on the coefficients in the models.
+
+##Did including the spatial error terms significantly improve model fit?
+#Comparing the models using the 'anova()' function confirms that including the spatial error terms significantly improves model fit. Both the exponential and rational quadratic models have a lower AIC than the GLS with no spatial error. 
+
+##Explain why you did or did not observe a difference in the influence of adding the spatial error term between the two models.
+#Including the spatial error term influences the models because it takes into account potential relationships between samples that are closer together, for instance. In other words, the spatial error term accounts for potential non-independence between samples. 
+```
